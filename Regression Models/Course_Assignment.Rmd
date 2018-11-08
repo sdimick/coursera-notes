@@ -1,0 +1,75 @@
+---
+title: "Regression Models Assignment: MTCARS"
+author: "Seth Dimick"
+date: "12/27/2017"
+output: pdf_document
+---
+
+```{r, include=FALSE}
+library(ggplot2)
+library(datasets)
+library(dplyr)
+library(tidyr)
+```
+
+## MPG: Automatic or Manual?
+
+If you're looking for a vehicle with good fuel economy will you be buying an automatic or a manual transmission? Here at *Motor Trend* we took a look at the numbers and will halfheartedly tell you to look for a manual. What we found was that on average, cars with manual transmissions get more miles per gallon (MPG), but it's not due to the transmission type. If you were to hold other features of the vehicle constant, the transmission wouldn't make the difference in terms of MPG. However, automatics tend to have other features that make them guzzle more gas, like more cylinders and greater weight.
+
+## The Figures
+
+The average MPG for automatics are `r round(mean(mtcars[mtcars$am==0,]$mpg), 2)` and the average MGP for manuals is `r round(mean(mtcars[mtcars$am==1,]$mpg), 2)`. Take a look at the distribution of MPG for our sample of 32 different makes and models.
+
+```{r, fig.height=4, fig.width=6}
+mtcars2 <- mtcars
+mtcars2$Transmission <- ifelse(mtcars2$am==0,"Automatic","Manual")
+ggplot(mtcars2, aes(x=Transmission, y=mpg, fill=Transmission)) +
+  geom_violin() +
+  scale_fill_manual(values = c("coral2","aquamarine3")) +
+  geom_hline(yintercept = mean(mtcars[mtcars$am==0,]$mpg), color="coral2", linetype=2) +
+  geom_hline(yintercept = mean(mtcars[mtcars$am==1,]$mpg), color="aquamarine3", linetype=2) +
+  ggtitle("MPG Distribution by Transmission Type")
+```
+
+Without taking other attributes of the cars into consideration, we can see that transmission type is a significant factor in estimating MPG if that is all we know about the vehicle. See that output of a linear model will MPG as the dependent variable, and Transmission as the sole independent variable:
+
+```{r}
+fit1 <- lm(mpg ~ Transmission, data = mtcars2)
+summary(fit1)
+```
+
+We see our intercept is the mean of MPG for an automatic, and our coefficient for 'TransmissionManual' is the difference between our averages, and returns a significant p-value (less than 0.05). However, we see that the transmission type does a poor job of explaining variation of MPG alone since we have an Adjusted R-Squared of less than 0.35.
+
+Looking at our available data points, we can spot a few attributes that intuitively give us a causal relationship with MPG, and also show a more linear relationship. See the relationship of the number of cylinders (which more cylinders allow more gas to combust) and the weight of the car (greater weight requires more energy to move) with MPG, and also notice how the automatics in our data set fall on the higher ends of these spectrums.
+
+```{r, fig.height=4, fig.width=6}
+mtcars2 %>% 
+  select(mpg, cyl, wt, Transmission) %>% 
+  gather(stat, value, -mpg, -Transmission) %>% 
+  ggplot(aes(x=mpg, y=value, color=Transmission)) +
+  geom_point() +
+  facet_wrap(~stat, scales = "free_y")
+```
+
+Creating a model with the number of cylinders and weight of the car as our determinants of MPG creates a much better model than the transmission type alone.
+
+```{r}
+fit2 <- lm(mpg ~ cyl + wt, data = mtcars2)
+summary(fit2)
+```
+
+We see all our terms significant, and a much higher Adjusted R-squared of 0.82. From this model we see that holding weight constant, each additional cylinder decreases MPG by 1.5, and holding the number of cylinders constant, every 1,000 additional pounds decreases the MPG by 3.2.
+
+Once we have these key drivers of cylinders and weight in our model, we find that transmission type does not make a difference in our MPG, holding all else constant. With an ANOVA test of nested models, be see that adding an additional term for Transmission does not produce a significant impact on our model. 
+
+```{r}
+fit3 <- lm(mpg ~ cyl + wt + Transmission, data = mtcars2)
+anova(fit2, fit3)
+```
+
+## Apendix
+
+__Ridisual Plot for Best Model__:
+```{r}
+plot(predict(fit2),resid(fit2))
+```

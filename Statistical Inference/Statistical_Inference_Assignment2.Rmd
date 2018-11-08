@@ -1,0 +1,63 @@
+---
+title: 'Statistical Inference: Inferential Analysis'
+author: "Seth Dimick"
+date: "12/24/2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+Here we'll analyze the assigned data set and see if we can draw any statistically significant conclusions. The data set is called *ToothGrowth* and includeds the variables len, supp, and dose. Let's assume that supp is the type of supplement intended to promote tooth growth, dose is the dosage prescribed to a subject, and len is the observed lenth of a specific tooth of each subject after completing the prescribed supplement-dosage regiment.
+
+Let's take a look at the data numerically and visually.
+
+```{r}
+data("ToothGrowth")
+ToothGrowth$Supp_Dose <- factor(paste(ToothGrowth$supp, ToothGrowth$dose, sep = '-'))
+ToothGrowth %>% 
+  select(len,Supp_Dose) %>% 
+  group_by(Supp_Dose) %>% 
+  summarise(mean = mean(len), sdev = sd(len), n = n()) %>% 
+  as.data.frame()
+```
+
+
+```{r}
+ToothGrowth %>% 
+  ggplot(aes(x = Supp_Dose, y = len, fill = Supp_Dose)) +
+  geom_violin() +
+  ggtitle("Tooth Length Distributions") +
+  xlab("Supplement-Dose") +
+  ylab("Tooth Length")
+```
+
+With our 10 observations of each supplement-dosage combinations, it appears our big difference in tooth length comes from the dosage levels, and not the supplement type. Let's test the difference of means between dosage levels within supplement groups, between dosage of 1 and 0.5 and between 2 and 1. Our hypotheses are that in each group, a dosage of 1 has a greater mean than a dosage of 0.5, and a dosage of 2 has a greater mean than a dosage of 1.
+
+__T-Test Results__:
+
+```{r}
+#Set up our length measurments for each group
+OJ0.5 <- ToothGrowth[ToothGrowth$Supp_Dose=='OJ-0.5',]$len
+OJ1 <- ToothGrowth[ToothGrowth$Supp_Dose=='OJ-1',]$len
+OJ2 <- ToothGrowth[ToothGrowth$Supp_Dose=='OJ-2',]$len
+VC0.5 <- ToothGrowth[ToothGrowth$Supp_Dose=='VC-0.5',]$len
+VC1 <- ToothGrowth[ToothGrowth$Supp_Dose=='VC-1',]$len
+VC2 <- ToothGrowth[ToothGrowth$Supp_Dose=='VC-2',]$len
+
+#Test OJ1 vs OJ0.5
+t.test(OJ1, OJ0.5)
+#Test OJ2 vs OJ1
+t.test(OJ2, OJ1)
+#Test VC1 vs VC0.5
+t.test(VC1, VC0.5)
+#Test VC2 vs VC1
+t.test(VC2, VC1)
+```
+
+__Conclusion__:
+
+Eeach of our t-tests produce 95% confidence intervals greater than 0 in entirety, so we can reject our null hypotheses and say that within each supplement group, a dosage of 1 results in longer teeth than a dosage of 0.5 and a dosage of 2 results in longer teeth than a dosage of 1.

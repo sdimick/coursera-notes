@@ -1,0 +1,286 @@
+---
+title: "EDA for NLP"
+output: html_notebook
+---
+
+__Seth Dimick__  
+*August 5, 2018*  
+
+```{r setup, echo=FALSE, results='hide', warning=FALSE, error=FALSE}
+library(tidyverse)
+```
+
+## Background
+
+Word prediction is a common feature for many mobile applications that has come to be expected by consumers. Although there are many word prediction services available, it may be beneficial to train new predictive text models for certain applications as individuals usually change their grammatical style depending on the platform, purpose, and audience.  
+  
+Given three corpora of text from currated blog posts, news articles, and tweets, we have the chance to train our own text prediction models. Before jumping into training, we will explore each corpus to gain familiarity with the data sets and inform our plan of action.  
+  
+__Note__: *An attempt has been made to filter profanity using a profanity dictionary found on GitHub*.  
+<br>
+
+## Corpus File Summaries
+
+```{r, echo=FALSE}
+cbind(
+	c("Blogs", "News", "Twitter"),
+	c(
+		length(blogsLines),
+		length(newsLines),
+		length(twitterLines)
+	),
+	c(
+		sum(vocab.blogs$term_count),
+		sum(vocab.news$term_count),
+		sum(vocab.twitter$term_count)
+	),
+	c(
+		nrow(vocab.blogs),
+		nrow(vocab.news),
+		nrow(vocab.twitter)
+	)
+) %>% as.data.frame() %>% 
+	rename(
+		"Source" = V1,
+		"Documents" = V2,
+		"Total Words" = V3,
+		"Distinct Words" = V4
+	)
+```
+
+A quick overview of some high level numbers reinforce some of our assumptions about the text documents and reveal some new insight. We see that while we have the most "Documents" (*tweets*) from Twitter, it has the lowest count of total words. This would obviously be due to the strict character limit enforced by Twitter. It's also intersting to note that while the Twitter Corpus has the least number of total words, it has the highest number of distinct words. This is likely due to the acceptance of slang, acronyms or other jargon on Twitter that would not be acceptable for a news article or blog post.  
+<br>
+
+## Top Words
+
+Peeling back the next layer of data, we can examine what the top words, or terms, are in each corpus. Here are the top ten terms for each.
+
+```{r, echo=FALSE}
+cbind(
+	vocab.blogs %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Blog Term" = term,
+			   "Blog Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.news %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("News Term" = term,
+			   "News Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.twitter %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Tweet Term" = term,
+			   "Tweet Count" = term_count) %>% 
+		as.data.frame()
+)
+```
+
+The appearance of these short, common words, such as articles, is not surprising in the top terms lists. The seven terms "the", "and", "to", "a", "of", "in", and "is" are so ubiquitous that they are found in the top ten terms for each corpus.  
+<br>
+
+## Distribution of Words
+
+Knowing that there are nearly 300,000 unique terms in each corpus, we see an incrediblely sharp drop in the number of times each term is observed within the top ten terms above. To better understand how this plays out accross each disctionary, we can plot a few different distributions of our terms based on count.
+
+#### Term Frequency Distribution
+
+```{r, echo=FALSE}
+rbind(
+	vocab.blogs %>% mutate(source = "Blogs"),
+	vocab.news %>% mutate(source = "News"),
+	vocab.twitter %>% mutate(source = "Tweets")
+) %>% ggplot(aes(x = term_count)) +
+	geom_histogram(binwidth = 10) +
+	facet_grid(source ~ .) +
+	coord_cartesian(xlim = c(0, 1000))
+```
+
+With a basic fequency distribution plot, we see the majority of our distinct terms have 1, or near-zero, occurances, with a highly right-skewed distribution. This reinforces what we saw from the top ten words.
+
+#### Cumulative Word Coverage
+
+We can look at the nearnly inverse of this, and check out how many distinct terms are required to cover the total number of term occurance by percentage.
+
+```{r, echo=FALSE}
+rbind(
+	vocab.blogs %>% 
+		arrange(desc(term_count)) %>% 
+		mutate(terms = row_number(-term_count),
+			   cumulative_density = cumsum(term_count) /
+			   sum(term_count),
+			   source = "Blogs"),
+	vocab.news %>% 
+		arrange(desc(term_count)) %>% 
+		mutate(terms = row_number(-term_count),
+			   cumulative_density = cumsum(term_count) /
+			   sum(term_count),
+			   source = "News"),
+	vocab.twitter %>% 
+		arrange(desc(term_count)) %>% 
+		mutate(terms = row_number(-term_count),
+			   cumulative_density = cumsum(term_count) /
+			   sum(term_count),
+			   source = "Tweets")
+) %>% ggplot(aes(x = terms, y = cumulative_density)) + 
+	geom_line() +
+	facet_grid(source ~ .)
+```
+
+```{r, echo=FALSE}
+cbind(
+	c("Blogs", "News", "Twitter"),
+	c(
+		vocab.blogs %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Blogs") %>% 
+			filter(cumulative_density > 0.5) %>% 
+			.$terms %>% min(),
+		vocab.news %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "News") %>% 
+			filter(cumulative_density > 0.5) %>% 
+			.$terms %>% min(),
+		vocab.twitter %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Twitter") %>% 
+			filter(cumulative_density > 0.5) %>% 
+			.$terms %>% min()
+	),
+	c(
+		vocab.blogs %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Blogs") %>% 
+			filter(cumulative_density > 0.9) %>% 
+			.$terms %>% min(),
+		vocab.news %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "News") %>% 
+			filter(cumulative_density > 0.9) %>% 
+			.$terms %>% min(),
+		vocab.twitter %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Twitter") %>% 
+			filter(cumulative_density > 0.9) %>% 
+			.$terms %>% min()
+	),
+	c(
+		vocab.blogs %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Blogs") %>% 
+			filter(cumulative_density > 0.99) %>% 
+			.$terms %>% min(),
+		vocab.news %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "News") %>% 
+			filter(cumulative_density > 0.99) %>% 
+			.$terms %>% min(),
+		vocab.twitter %>% 
+			arrange(desc(term_count)) %>% 
+			mutate(terms = row_number(-term_count),
+				   cumulative_density = cumsum(term_count) /
+				   sum(term_count),
+				   source = "Twitter") %>% 
+			filter(cumulative_density > 0.99) %>% 
+			.$terms %>% min()
+	)
+) %>% as.data.frame() %>% 
+	rename(
+		"Source" = V1,
+		"Terms for 50% Coverage" = V2,
+		"Terms for 90% Coverage" = V3,
+		"Terms for 99% Coverage" = V4
+	)
+```
+
+These numbers are nice to know if we are looking for performance boosts in training or prediction for our predictive text app. Over 99% of word occurances in the corpora can be accounted for with less than a third of each corpus' vocabulary.
+
+## n-grams
+
+Next we can take a simple start to investigating the relationships between terms by looking at the most frequent n-grams. Here we will just peak at the top bigrams and trigrams.
+
+#### Bigrams
+
+```{r, echo=FALSE}
+cbind(
+	vocab.blogs.2 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Blog Bigram" = term,
+			   "Blog Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.news.2 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("News Bigram" = term,
+			   "News Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.twitter.2 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Tweet Bigram" = term,
+			   "Tweet Count" = term_count) %>% 
+		as.data.frame()
+)
+```
+
+#### Trigrams
+
+```{r, echo=FALSE}
+cbind(
+	vocab.blogs.3 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Blog Trigram" = term,
+			   "Blog Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.news.3 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("News Trigram" = term,
+			   "News Count" = term_count) %>% 
+		as.data.frame(),
+	vocab.twitter.3 %>% select(term, term_count) %>% 
+		top_n(10, term_count) %>% 
+		arrange(desc(term_count)) %>% 
+		rename("Tweet Trigram" = term,
+			   "Tweet Count" = term_count) %>% 
+		as.data.frame()
+)
+```
+
+There isn't much of a surprise here as we see many of our top terms coming through in our top n-grams.
+
+## Future Work
+
+From here, we can start working on the simplest implementation of a predictive text model, utilizing the relationships from our bigrams to build a markov chain model which will calculate the probability of the next word based on the word proceeding it. Through the process we can separate our corpora into test and train samples in order to measure our accuracy along the way.  
+  
+The final goal is of course a working implementation of our model in a Shiny app, that will provide suggestions for each next word, based on the characters typed by the user in a text box.  
+<br>
+<br>

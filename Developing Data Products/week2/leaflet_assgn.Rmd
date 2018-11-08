@@ -1,0 +1,24 @@
+---
+title: "Grammy Locations"
+author: "Seth Dimick"
+date: "1/28/2018"
+output: html_document
+---
+
+Since the Grammy's were on tonight and I didn't watch them since I was watching coursera lectures, I pulled the list of locations for the Grammy Awards from [Wikipedia](https://en.wikipedia.org/wiki/List_of_Grammy_Award_ceremony_locations) and used them for this leaflet assignment.
+
+Click on the circles to see venue name and number of times hosting.
+
+Don't miss that little circle in Tennessee!
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+library(leaflet)
+df <- read.csv("grammy_loc.csv")
+df$popup <- paste(df$popup, df$count, sep = ": ")
+df %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addCircleMarkers(weight = 1, radius = df$count, popup = df$popup)
+```
+
+

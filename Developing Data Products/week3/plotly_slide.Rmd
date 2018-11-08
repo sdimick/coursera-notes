@@ -1,0 +1,26 @@
+---
+title: "Week 3 Assignment"
+author: "Seth Dimick"
+date: "2/4/2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+```
+
+## Plotly Plot: `mtcars`
+
+```{r, echo=FALSE, message=FALSE}
+mtcars$Cylinders <- as.factor(mtcars$cyl)
+p <- mtcars %>% 
+  ggplot(aes(x=hp, y=mpg, colour=Cylinders)) +
+  geom_point() +
+  xlab("Horse Power") +
+  ylab("Miles Per Gallon")
+ggplotly(p)
+```
+

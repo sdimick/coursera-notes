@@ -1,0 +1,174 @@
+---
+title: "Checkout Weather Data"
+output: html_notebook
+---
+
+## Import and Clean Up
+
+```{r}
+library(dplyr, warn.conflicts = FALSE)
+rawData <- read.csv('weather_data.csv')
+# subset to data we have
+rawData <- rawData[,!is.na(rawData[1, ])] %>% 
+    arrange(DATE)
+# format date
+rawData$DATE <- as.Date(rawData$DATE)
+head(rawData)
+```
+
+## A Few Exploratory Graphs
+
+What percent of days were rainy? (PRCP > 0)
+
+```{r}
+rainDays <- rawData %>% 
+    filter(PRCP > 0) %>% 
+    nrow()
+rainDays/nrow(rawData)
+```
+
+How much does it rain on the average "rainy day"?
+
+```{r}
+rawData %>% 
+    filter(PRCP > 0) %>% 
+    summarise(avgPRCP = mean(PRCP)) %>% 
+    .$avgPRCP
+```
+
+Percentage of rainy days by month?
+
+```{r}
+rawData$RAIN <- ifelse(rawData$PRCP > 0, 1, 0)
+rawData$MONTH_NUM <- as.numeric(format(rawData$DATE, '%m'))
+rawData$MONTH_CHAR <- month.name[rawData$MONTH_NUM]
+
+library(ggplot2)
+rawData %>% 
+    group_by(MONTH_NUM) %>% 
+    summarise(pct_rain = sum(RAIN)/n()) %>% 
+    ggplot(aes(x = MONTH_NUM, y = pct_rain, fill = pct_rain)) +
+    geom_col() +
+    scale_fill_gradient(low = 'light blue', high = 'dark blue')
+```
+
+Month matters, bring me summer!!
+
+More chance of rain if it's rained the previous day?
+
+```{r}
+rawData$PREV_RAIN <- numeric(length = nrow(rawData))
+rawData$PREV_RAIN[2:nrow(rawData)] <- rawData$RAIN[1:nrow(rawData)-1]
+
+rawData %>% 
+    group_by(PREV_RAIN) %>% 
+    summarise(pct_rain = sum(RAIN)/n()) %>% 
+    ggplot(aes(x = PREV_RAIN, y = pct_rain, fill = pct_rain)) +
+    geom_col() +
+    scale_fill_gradient(low = 'light blue', high = 'dark blue')
+```
+
+Suspicion confirmed!
+
+Should be expext an interaction variable? Does the percent of rainy days following a rainy change throughout the year?
+
+```{r}
+rawData %>% 
+    group_by(MONTH_NUM, PREV_RAIN) %>% 
+    summarise(pct_rain = sum(RAIN)/n()) %>% 
+    ggplot(aes(x = MONTH_NUM, y = pct_rain, color = as.factor(PREV_RAIN))) +
+    geom_point()
+```
+
+The effect looks additive. It doesn't look like there needs to be an interaction term.
+
+## Model 1
+
+Build a data set to check model results:
+
+```{r}
+viewOutput <- data.frame(
+    MONTH_CHAR = rep(month.name[1:12], 2),
+    PREV_RAIN = c(rep(0, 12), rep(1, 12))
+)
+```
+
+
+Probability of Rain
+
+```{r}
+probRain <- glm(RAIN ~ MONTH_CHAR + PREV_RAIN, data = rawData, family = "binomial")
+summary(probRain)
+```
+
+```{r}
+viewOutput %>% 
+    mutate(ChanceOfRain = predict(probRain, newdata = viewOutput, type = 'response'))
+```
+
+Classification Model: Rain or No Rain
+
+```{r}
+rawData$RAIN_FACTOR <- as.factor(ifelse(rawData$RAIN==0, "No", "Yes"))
+
+library(caret, warn.conflicts = FALSE)
+inTrain <- createDataPartition(rawData$RAIN_FACTOR, p = 0.7, list = FALSE)
+training <- rawData[inTrain, ]
+testing <- rawData[-inTrain, ]
+isRain <- train(RAIN_FACTOR ~ MONTH_CHAR + PREV_RAIN, data = training, method = "glm")
+predictions <- predict(isRain, newdata = testing)
+confusionMatrix(predictions, testing$RAIN_FACTOR)
+```
+
+```{r}
+viewOutput %>% 
+    mutate(isRain = predict(isRain, newdata = viewOutput))
+```
+
+71% accuracy and a little wonky. Apparently it will never rain tomorrow if it didn't rain today!
+
+## Model 2
+
+Is yesterday's temperature correlated with rain today's rain?
+
+```{r}
+rawData$PREV_LOW <- numeric(length = nrow(rawData))
+rawData$PREV_LOW[2:nrow(rawData)] <- rawData$TMIN[1:nrow(rawData)-1]
+
+rawData %>% 
+    mutate(PREV_LOW = cut(PREV_LOW, 10),
+           PREV_RAIN = as.factor(PREV_RAIN)) %>% 
+    group_by(MONTH_NUM, PREV_LOW, PREV_RAIN) %>% 
+    summarise(pct_rain = sum(RAIN)/n()) %>% 
+    ggplot(aes(x = PREV_LOW, y = pct_rain, color = PREV_RAIN)) +
+    geom_point() +
+    facet_wrap('MONTH_NUM', nrow = 4)
+```
+
+Probability of Rain
+
+```{r}
+probRain2 <- glm(RAIN ~ MONTH_CHAR * PREV_LOW + PREV_RAIN, data = rawData, family = "binomial")
+```
+
+Classification Model: Rain or No Rain
+
+```{r}
+inTrain <- createDataPartition(rawData$RAIN_FACTOR, p = 0.7, list = FALSE)
+training <- rawData[inTrain, ]
+testing <- rawData[-inTrain, ]
+isRain2 <- train(RAIN_FACTOR ~ MONTH_CHAR * PREV_LOW + PREV_RAIN, data = training, method = "glm")
+predictions2 <- predict(isRain2, newdata = testing)
+confusionMatrix(predictions2, testing$RAIN_FACTOR)
+```
+
+Nope.. same accuracty.
+
+## Save Models and Data
+
+```{r}
+saveRDS(rawData, file = "app/data.rds")
+saveRDS(probRain, file = "app/probRain.rds")
+saveRDS(isRain, file = "app/isRain.rds")
+```
+
